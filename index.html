@@ -3629,7 +3629,6 @@ document.addEventListener('DOMContentLoaded', async function(e) {
 
   // Add avatar links
   const eAvatars = d3.select("#avatars");
-  eAvatars.selectAll(".command").remove(); // Clear existing avatars
   for ( const [i,k] of Object.entries(Object.keys(site.avatars)) ) {
     eAvatars.append("div")
       .classed("command", true)
@@ -4179,12 +4178,14 @@ document.addEventListener('DOMContentLoaded', async function(e) {
 
   d3.selectAll("[data-avatar-name]").on('click.command', async function(ev) {
     const e = d3.select(this);
-    d3.selectAll("[data-avatar-name]").classed('selected',false);
     let avatar = e.attr('data-avatar-name');
-    d3.selectAll("[data-avatar-name='" + avatar + "']").classed("selected",true);
     if ( avatar === 'FILE' ) {
-      // Do nothing
-    } else if ( avatar === 'URL' ) {
+      // Let the label's default behavior work - it will trigger the file input
+      return;
+    }
+    d3.selectAll("[data-avatar-name]").classed('selected',false);
+    d3.selectAll("[data-avatar-name='" + avatar + "']").classed("selected",true);
+    if ( avatar === 'URL' ) {
       let url = cfg('avatar-url');
       d3.selectAll("[data-pose],[data-animation],#pause").classed("selected",false);
       const o = {
