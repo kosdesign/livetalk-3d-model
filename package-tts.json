@@ -1,0 +1,13 @@
+{
+  "name": "talkinghead-tts-server",
+  "version": "1.0.0",
+  "description": "TTS Server for TalkingHead",
+  "main": "tts-server.js",
+  "scripts": {
+    "start": "node tts-server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}

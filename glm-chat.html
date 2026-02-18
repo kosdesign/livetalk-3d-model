@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link rel="icon" href="data:,">
+
+  <title>TalkingHead - GLM Chat</title>
+
+  <style>
+    body, html {
+      width:100%; height:100%; margin: 0; padding: 0; position: relative;
+      background-color: #202020; color: white; overflow: hidden;
+      font-family: Arial;
+    }
+    #head { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+    #avatar {
+      display: block; width: 100%; height: 100%; position: absolute;
+      top: 0; left: 0; right: 0; margin: 0; padding: 0;
+    }
+    #info {
+      display: block; position: absolute; bottom: 10px; left: 10px;
+      right: 10px; font-family: Arial; font-size: 20px;
+    }
+    #controls { position: absolute; top: 0; right: 0; margin: 10px; z-index: 10; }
+    #apikey { -webkit-text-security: square; }
+    *[disabled] {
+      opacity: 0.5; cursor: default; pointer-events: none;
+    }
+    #messages {
+      position: absolute; bottom: 60px; left: 10px; right: 10px;
+      max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.5);
+      padding: 10px; border-radius: 5px; display: none;
+    }
+    .message { margin: 5px 0; padding: 5px; border-radius: 3px; }
+    .user { background: #1a5f7a; }
+    .assistant { background: #5f1a1a; }
+  </style>
+
+  <script type="importmap">
+  { "imports":
+    {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js/+esm",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/",
+      "talkinghead": "./modules/talkinghead.mjs"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import { TalkingHead } from "talkinghead";
+
+    /**
+    * GLOBALS
+    */
+
+    // TalkingHead
+    let head; // TalkingHead instance
+    const avatar = {
+      url: "./avatars/julia.glb",
+      body: "F",
+      avatarMood: "neutral"
+    };
+
+    // Speech Recognition
+    let recognition;
+    let isListening = false;
+    let transcript = "";
+
+    // GLM API
+    const model = "glm-4.7";
+    const apiUrl = "https://api.z.ai/api/paas/v4/chat/completions";
+    const messages = [
+      {
+        role: "system",
+        content: "You are Julia, a clear, concise, and conversational English-speaking assistant. You are calm, helpful, and friendly. You have a human-like 3D avatar that the user can see."
+      }
+    ];
+
+    // Other globals
+    const el = {}; // DOM elements based in `id` property
+
+    /**
+    * Initialize Speech Recognition
+    */
+    function initSpeechRecognition() {
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+
+        recognition.onresult = (event) => {
+          transcript = event.results[0][0].transcript;
+          console.log("Recognized:", transcript);
+          if (transcript && transcript.length > 0) {
+            addMessage("user", transcript);
+            sendToGLM(transcript);
+          }
+        };
+
+        recognition.onerror = (event) => {
+          console.error("Speech recognition error:", event.error);
+          // Don't stop listening on 'no-speech' error - just retry
+          if (event.error === 'no-speech') {
+            console.log("No speech detected, retrying...");
+            setTimeout(() => {
+              if (isListening) {
+                try {
+                  recognition.start();
+                } catch (e) {
+                  console.error("Failed to restart recognition:", e);
+                  stopListening();
+                }
+              }
+            }, 500);
+          } else {
+            stopListening();
+          }
+        };
+
+        recognition.onend = () => {
+          // Only stop if it's not a 'no-speech' error
+          if (isListening) {
+            // Auto-restart for continuous listening
+            setTimeout(() => {
+              if (isListening) {
+                try {
+                  recognition.start();
+                } catch (e) {
+                  console.error("Failed to restart recognition:", e);
+                  stopListening();
+                }
+              }
+            }, 500);
+          }
+        };
+      } else {
+        console.error("Speech recognition not supported");
+        el.info.textContent = "Speech recognition not supported in this browser";
+      }
+    }
+
+    /**
+    * Start listening
+    */
+    function startListening() {
+      if (recognition && !isListening) {
+        isListening = true;
+        recognition.start();
+        el.mic.value = "🎤 Stop";
+        el.info.textContent = "Listening...";
+      }
+    }
+
+    /**
+    * Stop listening
+    */
+    function stopListening() {
+      if (recognition && isListening) {
+        isListening = false;
+        recognition.stop();
+        el.mic.value = "🎤 Speak";
+        el.info.textContent = "";
+      }
+    }
+
+    /**
+    * Send text to GLM API
+    */
+    async function sendToGLM(text) {
+      try {
+        el.info.textContent = "Thinking...";
+
+        // Add user message
+        messages.push({ role: "user", content: text });
+
+        const response = await fetch(apiUrl, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${el.apikey.value}`
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: messages,
+            stream: false
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          console.error("GLM API error:", error);
+          el.info.textContent = "Error: " + (error.error?.message || response.statusText);
+          return;
+        }
+
+        const data = await response.json();
+        const assistantMessage = data.choices[0].message.content;
+
+        // Add assistant message
+        messages.push({ role: "assistant", content: assistantMessage });
+
+        addMessage("assistant", assistantMessage);
+        
+        // Speak the response
+        await head.speakText(assistantMessage, {
+          lipsyncLang: "en",
+          ttsVoice: "en-US-JennyNeural",
+          ttsLang: "en-US",
+          ttsRate: 1.0,
+          ttsPitch: 0
+        });
+
+        el.info.textContent = "";
+
+      } catch (error) {
+        console.error("Error:", error);
+        el.info.textContent = "Error: " + error.message;
+      }
+    }
+
+    /**
+    * Add message to chat
+    */
+    function addMessage(role, content) {
+      const msgDiv = document.createElement("div");
+      msgDiv.className = `message ${role}`;
+      msgDiv.textContent = `${role}: ${content}`;
+      el.messages.appendChild(msgDiv);
+      el.messages.style.display = "block";
+      el.messages.scrollTop = el.messages.scrollHeight;
+    }
+
+    /**
+    * Instantiate the TalkingHead class
+    */
+    function initHead() {
+      head = new TalkingHead( el.avatar, {
+        ttsEndpoint: "N/A",
+        lipsyncModules: ["en"],
+        cameraView: "upper",
+        mixerGainSpeech: 3,
+        cameraDistance: -0.9,
+        cameraRotateEnable: false,
+        lightAmbientIntensity: 0,
+        lightDirectIntensity: 0,
+        lightSpotIntensity: 0
+      });
+      window.head = head; // For debugging
+    }
+
+    /**
+    * Load the avatar
+    */
+    async function loadAvatar() {
+      try {
+        el.info.style.display = 'block';
+        el.info.textContent = "Loading avatar...";
+        await head.showAvatar(avatar);
+        el.info.style.display = 'none';
+      } catch (error) {
+        console.error("Error loading avatar:", error);
+        el.info.textContent = "Error loading avatar: " + error.message;
+      }
+    }
+
+    // WEB PAGE LOADED
+    document.addEventListener('DOMContentLoaded', async function(e) {
+
+      // Get all DOM elements with an `id`
+      document.querySelectorAll('[id]').forEach( x => el[x.id] = x );
+
+      // Init head
+      initHead();
+
+      // Init speech recognition
+      initSpeechRecognition();
+
+      // API key
+      const fnApikey = () => el.mic.disabled = !el.apikey.value;
+      el.apikey.addEventListener("change", fnApikey);
+      el.apikey.addEventListener("input", fnApikey);
+
+      // Mic button
+      el.mic.addEventListener("click", function(e) {
+        if (isListening) {
+          stopListening();
+        } else {
+          startListening();
+        }
+      });
+
+      // Load the avatar
+      await loadAvatar();
+
+    });
+
+  </script>
+</head>
+
+<body>
+  <div id="head">
+    <div id="avatar"></div>
+    <div id="info"></div>
+  </div>
+  <div id="controls">
+    <label id="label" for="apikey">GLM:</label>
+    <input id="apikey" name="apikey" type="text" placeholder="API Key"/>
+    <input id="mic" type="button" value="🎤 Speak" disabled/>
+  </div>
+  <div id="messages"></div>
+</body>
+
+</html>
