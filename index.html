@@ -3700,7 +3700,6 @@ document.addEventListener('DOMContentLoaded', async function(e) {
 
   // Add poses
   const ePoses = d3.select("#poses");
-  ePoses.selectAll(".command[data-pose]").remove(); // Clear existing poses
   for ( const [k,o] of Object.entries(site.poses) ) {
     ePoses.append("div")
       .classed("command", true)
@@ -3711,7 +3710,6 @@ document.addEventListener('DOMContentLoaded', async function(e) {
   // Add gestures
   if ( site.gestures ) {
     const eGestures = d3.select("#gestures");
-    eGestures.selectAll(".command[data-gesture]").remove(); // Clear existing gestures
     for ( const [k,o] of Object.entries(site.gestures) ) {
       eGestures.append("div")
         .classed("command", true)
@@ -3722,7 +3720,6 @@ document.addEventListener('DOMContentLoaded', async function(e) {
 
   // Add animations
   const eAnimations = d3.select("#animations");
-  <!-- eAnimations.selectAll(".command[data-animation]").remove(); // Clear existing animations -->
   for ( const [k,o] of Object.entries(site.animations) ) {
     eAnimations.append("div")
       .classed("command", true)
